@@ -155,7 +155,7 @@ class PatchFile(ModFile):
     def __init__(self, modInfo, pfile_minfos):
         """Initialization."""
         ModFile.__init__(self,modInfo,None)
-        self.tes4.author = 'BASHED PATCH'
+        self.tes4.author = b'BASHED PATCH'
         self.tes4.masters = [bush.game.master_file]
         # Start records at 0x800 to avoid problems where people use older
         # versions of games that don't support the expanded ESL range. BPs

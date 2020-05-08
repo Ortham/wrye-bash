@@ -47,7 +47,7 @@ from .save_headers import get_save_header_type
 from .. import archives, bass, bolt, bush, env, initialization, load_order
 from ..bass import dirs, inisettings, Store
 from ..bolt import AFile, DataDict, FName, FNDict, GPath, ListInfo, Path, \
-    decoder, deprint, dict_sort, forward_compat_path_to_fn, \
+    deprint, dict_sort, forward_compat_path_to_fn, \
     forward_compat_path_to_fn_list, os_name, struct_error, top_level_files, \
     OrderedLowerDict, AFileInfo, attrgetter_cache
 from ..brec import FormIdReadContext, FormIdWriteContext, RecordHeader, \
@@ -213,13 +213,26 @@ class FileInfo(AFileInfo):
         self.madeBackup = False
         # True if the masters for this file are not reliable
         self.has_inaccurate_masters = False
+        # True if has a master with un unencodable name in cp1252
+        self.has_unicode_masters = False
         #--Ancillary storage
         self.extras = {}
         super().__init__(fullpath, load_cache, **kwargs)
 
-    def _reset_masters(self):
+    def _reset_masters(self, good_encodings=frozenset((u'ascii', u'cp1252'))): # TODO other "good" ones?
         #--Master Names/Order
-        self.masterNames = tuple(self._get_masters())
+        masters_bytestrings = self._get_masters() # type: list[bolt.PluginStr]
+        # decode the strings, setting their preferred_encoding to the one used
+        self.masterNames = tuple(FName('%s' % x) for x in masters_bytestrings)
+        try:
+            for x in masters_bytestrings:
+                if x.preferred_encoding not in good_encodings:
+                    # we fell back  to some other encoding to decode - check if
+                    # it's encodable in cp1252 # TODO: will mangle it probably
+                    x._decoded.encode(u'cp1252')
+            self.has_unicode_masters = False
+        except UnicodeEncodeError:
+            self.has_unicode_masters = True
         self.masterOrder = tuple() #--Reset to empty for now
 
     def _file_changed(self, stat_tuple):
@@ -801,14 +814,6 @@ class ModInfo(FileInfo):
     def hasActiveTimeConflict(self):
         """True if it has an active mtime conflict with another mod."""
         return load_order.has_load_order_conflict_active(self.fn_key)
-
-    def hasBadMasterNames(self): # used in status calculation
-        """True if has a master with un unencodable name in cp1252."""
-        try:
-            for x in self.masterNames: x.encode('cp1252')
-            return False
-        except UnicodeEncodeError:
-            return True
 
     def mod_bsas(self, bsa_infos=None):
         """Returns a list of all BSAs that the game will attach to this plugin.
@@ -1410,7 +1415,7 @@ class SaveInfo(FileInfo):
             if xse_cosave is not None: # the cached cosave should be valid
                 # Make sure the cosave's masters are actually useful
                 if xse_cosave.has_accurate_master_list():
-                    return [*map(FName, xse_cosave.get_master_list())]
+                    return xse_cosave.get_master_list()
         # Fall back on the regular masters - either the cosave is unnecessary,
         # doesn't exist or isn't accurate
         return self.header.masters
@@ -2799,7 +2804,7 @@ class ModInfos(TableFileInfos):
             if _modSet is None: _modSet = set(self)
             #--Check for bad masternames:
             #  Disabled for now
-            ##if self[fileName].hasBadMasterNames():
+            ##if self[fileName].has_unicode_masters:
             ##    return
             # Speed up lookups, since they occur for the plugin and all masters
             acti_set = set(self._active_wip)
@@ -3014,7 +3019,7 @@ class ModInfos(TableFileInfos):
         newFile = ModFile(newInfo)
         newFile.tes4.masters = wanted_masters
         if is_bashed_patch:
-            newFile.tes4.author = u'BASHED PATCH'
+            newFile.tes4.author = b'BASHED PATCH'
         if with_esm_flag:
             newFile.tes4.flags1.esm_flag = True
         if with_esl_flag:
