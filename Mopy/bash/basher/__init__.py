@@ -4004,7 +4004,7 @@ class BashFrame(WindowFrame):
         ##: maybe we need to refresh inis and *not* refresh saves but on ShowPanel?
         ui_refresh: defaultdict[Store, bool] = defaultdict(bool, {
             store.unique_store_key: not booting and bool(store.refresh()) # todo add the refr object here
-            for store in (bosh.bsaInfos, bosh.modInfos, bosh.saveInfos)})
+            for store in (bosh.bsaInfos, bosh.modInfos, bosh.saveInfos)})  # , bosh.iniInfos
         ui_refresh[Store.SAVES] |= ui_refresh[Store.MODS] # for save masters
         #--Repopulate, focus will be set in ShowPanel
         self.distribute_ui_refresh(ui_refresh)
