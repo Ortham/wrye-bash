@@ -389,12 +389,11 @@ class LoGame:
     def _must_update_active(cls, deleted_plugins, reordered):
         raise NotImplementedError
 
-    def _request_cache_update(self, cached_load_order, cached_active):
-        """Returns True if the cached values are not up to date and should be
-        updated."""
+    def request_cache_update(self, cached_load_order, cached_active): # one use
+        """Return a pair of values for passing to get_load_order."""
         update_act = cached_active is None or self._plugins_txt.do_update()
         active = None if update_act else cached_active
-        return None, active #timestamps just calculate load order from modInfos
+        return None, active # Timestamp just calculate load order from modInfos
 
     # Handle active plugins file (always exists)
     def swap(self, old_dir, new_dir):
@@ -833,8 +832,8 @@ class TextfileGame(_TextFileLo):
         super().__init__(mod_infos, plugins_txt_path, **kwargs)
         self._loadorder_txt = lo_txt_type(self._star, loadorder_txt_path)
 
-    def _request_cache_update(self, cached_load_order, cached_active):
-        _lo, act = super()._request_cache_update(cached_load_order, cached_active)
+    def request_cache_update(self, cached_load_order, cached_active):
+        _lo, act = super().request_cache_update(cached_load_order, cached_active)
         active_changed = act is None
         # if active changed, refetch load order to check for desync
         # will also return True if file was deleted
@@ -972,7 +971,7 @@ class AsteriskGame(_TextFileLo):
         file that stores active plugins."""
         return self.pinned_mods()
 
-    def _request_cache_update(self, *args):
+    def request_cache_update(self, *args):
         if any(x is None for x in args) or self._plugins_txt.do_update():
             return None, None
         return args
