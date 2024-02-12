@@ -117,7 +117,7 @@ class Saves_ProfilesData(balt.ListEditorData):
     def _validate_prof_name(self, newName):
         #--Error checks
         if not newName: return False
-        lowerNames = {save_dir.lower() for save_dir in self.getItemList()}
+        lowerNames = {savedir.lower() for savedir in self.getItemList()}
         if newName.lower() in lowerNames:
             showError(self.parent, _('Name must be unique.'))
             return False
@@ -665,7 +665,7 @@ class Save_Move(ChoiceLink):
             count = self._move_saves(destDir, profile)
         finally:
             if not self.copyMode: # files moved to other profile, refresh
-                moved = bosh.saveInfos.delete_refresh(self.selected,
+                moved = bosh.saveInfos.delete_refresh(self.iselected_infos(),
                                                       check_existence=True)
                 self.window.RefreshUI(to_del=moved)
         profile_rel = os.path.relpath(destDir, bass.dirs['saveBase'])

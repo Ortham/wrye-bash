@@ -1482,24 +1482,19 @@ class DataStore(DataDict):
 
     def delete(self, delete_keys, *, recycle=True):
         """Deletes member file(s)."""
-        full_delete_paths, delete_info = self.files_to_delete(delete_keys)
+        # factory is _AFileInfos only, but installers don't have corrupted so
+        # let it blow if we are called with non-existing keys
+        finfos = [v or self.factory(self.store_dir.join(k)) for k, v in
+                  self.filter_essential(delete_keys).items()]
         try:
-            self._delete_operation(full_delete_paths, delete_info,
-                recycle=recycle)
+            self._delete_operation(finfos, recycle=recycle)
         finally:
-            if delete_info: # Installers - remove markers from keys
-                delete_keys = {k for k in delete_keys if k not in delete_info}
-            self.delete_refresh(delete_keys, True, delete_info)
+            self.delete_refresh(finfos, True)
 
-    def files_to_delete(self, filenames, **kwargs): # factory is _AFileInfos!
-        finfos = (v or self.factory(self.store_dir.join(k)) for k, v in
-                  self.filter_essential(filenames).items())
-        abs_delete_paths = [*chain.from_iterable(fileInfo.delete_paths() for
-            fileInfo in finfos)]
-        return abs_delete_paths, None # no extra delete info
-
-    def _delete_operation(self, paths, delete_info, *, recycle=True):
-        env.shellDelete(paths, recycle=recycle)
+    def _delete_operation(self, finfos, *, recycle=True):
+        abs_del_paths = [
+            *chain.from_iterable(inf.delete_paths() for inf in finfos)]
+        env.shellDelete(abs_del_paths, recycle=recycle)
 
     def filter_essential(self, fn_items: Iterable[FName]):
         """Filters essential files out of the specified filenames. Returns the
@@ -1512,7 +1507,7 @@ class DataStore(DataDict):
         remaining ones as a dict, mapping file names to file infos."""
         return {k: self[k] for k in fn_items}
 
-    def delete_refresh(self, del_paths, check_existence, extra_del_data=None):
+    def delete_refresh(self, infos, check_existence):
         raise NotImplementedError
 
     def refresh(self): raise NotImplementedError
@@ -1574,11 +1569,11 @@ class _AFileInfos(DataStore):
 
     def __init__(self, dir_, factory):
         """Init with specified directory and specified factory type."""
-        self.corrupted: FNDict[FName, Corrupted] = FNDict()
         super().__init__(self._initDB(dir_))
         self.factory = factory
 
     def _initDB(self, dir_):
+        self.corrupted: FNDict[FName, Corrupted] = FNDict()
         self.store_dir = dir_ #--Path
         deprint(f'Initializing {self.__class__.__name__}')
         deprint(f' store_dir: {self.store_dir}')
@@ -1613,8 +1608,8 @@ class _AFileInfos(DataStore):
                     deprint(f'Failed to load {new} from {cor.abs_path}: {er}',
                             traceback=True)
                     self.pop(new, None)
-            rdata.to_del = del_infos
-        self.delete_refresh(rdata.to_del, check_existence=False)
+            rdata.to_del = {d.fn_key for d in del_infos}
+        self.delete_refresh(del_infos, check_existence=False)
         if rdata.redraw:
             self._notify_bain(altered={self[n].abs_path for n in rdata.redraw})
         return rdata
@@ -1648,11 +1643,12 @@ class _AFileInfos(DataStore):
         return self._diff_dir(FNDict(((x, {}) for x in inodes)))
 
     def _diff_dir(self, inodes) -> tuple[ # ugh - when dust settles use 3.12
-        dict[FName, tuple[AFile | None, dict]], set[FName]]:
+        dict[FName, tuple[AFile | None, dict]], set[ListInfo]]:
         """Return a dict of fn keys (see overrides) of files present in data
         dir and a set of deleted keys."""
         # for modInfos '.ghost' must have been lopped off from inode keys
-        oldNames = set(self) | self.corrupted.keys()
+        del_infos = {inf for inf in [*self.values(), *self.corrupted.values()]
+                     if inf.fn_key not in inodes}
         new_or_present = {}
         for k, kws in inodes.items():
             # corrupted that has been updated on disk - if cor.abs_path
@@ -1662,14 +1658,12 @@ class _AFileInfos(DataStore):
                 new_or_present[k] = (None, kws)
             elif not cor: # for default tweaks with a corrupted copy
                 new_or_present[k] = (self.get(k), kws)
-        return new_or_present, oldNames - inodes.keys()
+        return new_or_present, del_infos
 
-    def delete_refresh(self, del_keys, check_existence, extra_del_data=None):
+    def delete_refresh(self, infos, check_existence):
         """Special case for the saves, inis, mods and bsas.
-        :param del_keys: must be the data store keys and not full paths
-        :param extra_del_data: unused"""
-        #--Table
-        paths_to_keys = {self[n].abs_path: n for n in del_keys}
+        :param infos: the infos corresponding to deleted items."""
+        paths_to_keys = {inf.abs_path: inf.fn_key for inf in infos}
         if check_existence:
             for filePath in list(paths_to_keys):
                 if filePath.exists():
@@ -1760,17 +1754,16 @@ class TableFileInfos(_AFileInfos):
         self.table = bolt.DataTable(
             bolt.PickleDict(self.bash_dir.join('Table.dat')))
         ##: fix nightly regression storing 'installer' property as FName
-        inst_column = self.table.getColumn('installer')
-        for fn_key, val in inst_column.items():
-            if type(val) is not str:
+        for fn_key, val in ((fnk, col_dict['installer']) for fnk, col_dict in
+                            self.table.items() if 'installer' in col_dict):
+            if val is not None and type(val) is not str:
                 deprint(f'stored installer for {fn_key} is {val!r}')
-                inst_column[fn_key] = str(val)
+                self.table[fn_key]['installer'] = str(val)
         return db
 
     #--Delete
-    def delete_refresh(self, deleted_keys, check_existence, extra_del_data=None):
-        deleted_keys = super().delete_refresh(deleted_keys, check_existence,
-                                              extra_del_data)
+    def delete_refresh(self, infos, check_existence):
+        deleted_keys = super().delete_refresh(infos, check_existence)
         for del_fn in deleted_keys:
             self.table.pop(del_fn, None)
         return deleted_keys
@@ -1800,6 +1793,7 @@ class Corrupted(AFile):
     """A 'corrupted' file info. Stores the exception message. Not displayed."""
 
     def __init__(self, fullpath, error_message, *, itsa_ghost=False, **kwargs):
+        self.fn_key = FName(fullpath.stail)
         if itsa_ghost:
             fullpath = fullpath + '.ghost' # Path.__add__ !
         super().__init__(fullpath, **kwargs)
@@ -1978,13 +1972,13 @@ class INIInfos(TableFileInfos):
             [(f'{k}', bass.settings['bash.ini.choices'][k]) for k in keys])
 
     def _diff_dir(self, inodes):
-        oldNames = {*(n for n, v in self.items() if not v.is_default_tweak),
-                    *self.corrupted}
+        old_ini_infos = {*(v for v in self.values() if not v.is_default_tweak),
+                         *self.corrupted.values()}
         new_or_present, del_infos = super()._diff_dir(inodes)
         # if iinf is a default tweak a file has replaced it - set it to None
         new_or_present = {k: (inf and (None if inf.is_default_tweak else inf),
             kws) for k, (inf, kws) in new_or_present.items()}
-        return new_or_present, oldNames & del_infos
+        return new_or_present, del_infos & old_ini_infos # drop default tweaks
 
     def _missing_default_inis(self):
         return ((k, v) for k, v in self._default_tweaks.items() if
@@ -2003,7 +1997,7 @@ class INIInfos(TableFileInfos):
                 rdata.to_add.add(k)
         rdata.ini_changed = refresh_target and (
                     self.ini.updated or self.ini.do_update())
-        if rdata.ini_changed: # reset the status of all infos and let RefreshUI set it
+        if rdata.ini_changed: # reset the status of all infos and let RefreshUI set it # todo move in RUI?
             self.ini.updated = False
             for ini_info in self.values(): ini_info.reset_status()
         return rdata
@@ -2011,9 +2005,8 @@ class INIInfos(TableFileInfos):
     @property
     def bash_dir(self): return dirs[u'modsBash'].join(u'INI Data')
 
-    def delete_refresh(self, del_keys, check_existence, extra_del_data=None):
-        del_keys = super().delete_refresh(del_keys, check_existence,
-                                          extra_del_data)
+    def delete_refresh(self, infos, check_existence):
+        del_keys = super().delete_refresh(infos, check_existence)
         if check_existence: # DataStore.delete() path - re-add default tweaks
             for k, default_info in self._missing_default_inis():
                 self[k] = default_info  # type: DefaultIniInfo
@@ -2078,18 +2071,17 @@ def _lo_cache(lord_func):
         try:
             ldiff: LordDiff = lord_func(self, *args, **kwargs)
             if not (ldiff.act_changed() or ldiff.added or ldiff.missing):
-                return ldiff
+                return ldiff ##: todo do any changes depend on ldiff.reordered for inactive only?
             # Update all data structures that may be affected by LO change
             ldiff.affected |= self._refresh_mod_inis_and_strings()
             ldiff.affected |= self._file_or_active_updates()
             # unghost new active plugins and ghost new inactive (if autoGhost)
             ghostify = dict.fromkeys(ldiff.act_new, False)
             if bass.settings['bash.mods.autoGhost']:
-                allowGhosting = self.table.getColumn('allowGhosting')
                 new_inactive = (ldiff.act_del - ldiff.missing) | (
                         ldiff.added - ldiff.act_new) # new mods, ghost
                 ghostify.update({k: True for k in new_inactive if
-                                 allowGhosting.get(k, True)})
+                    self[k].get_table_prop('allowGhosting', True)})
             ldiff.affected.update(mod for mod, modGhost in ghostify.items()
                                   if self[mod].setGhost(modGhost))
             return ldiff
@@ -2340,6 +2332,12 @@ class ModInfos(TableFileInfos):
         # If refresh_infos is False and mods are added _do_ manually refresh
         ldiff = self.refreshLoadOrder(forceRefresh=mods_changes or
             unlock_lo, forceActive=bool(rdata.to_del), unlock_lo=unlock_lo)
+        if add_check := (refresh_infos and (ldiff.added ^ rdata.to_add)):
+            ms = f'{ldiff.added=} differs from {rdata.to_add}: {add_check}'
+            deprint(ms, traceback=True)
+        if miss_check := (refresh_infos and (ldiff.missing ^ rdata.to_del)):
+            ms = f'{ldiff.missing=} differs from {rdata.to_del}: {miss_check}'
+            deprint(ms, traceback=True)
         # if active did not change, we must perform the refreshes below
         if not ((act_ch := ldiff.act_changed()) or ldiff.added or
                 ldiff.missing):
@@ -2348,7 +2346,7 @@ class ModInfos(TableFileInfos):
             # were deleted... we need a load order below: in skyrim we read
             # inis in active order - we then need to redraw what changed status
             rdata.redraw |= self._refresh_mod_inis_and_strings()
-            if mods_changes:
+            if mods_changes: ##: just rdata.redraw? is rdata.to_del/add==ldiff.missing/added?
                 rdata.redraw |= self._file_or_active_updates()
         else: # we did all the refreshes above in _modinfos_cache_wrapper
             rdata.redraw |= act_ch | ldiff.reordered | ldiff.affected
@@ -2458,10 +2456,10 @@ class ModInfos(TableFileInfos):
         # game
         quick_checks = {k: v for k, v in quick_checks.items()
                         if k in merg_checks}
-        name_mergeInfo = self.table.getColumn('mergeInfo')
         for fn_mod, modInfo in dict_sort(self, reverse=True,
                                          key_f=load_order.cached_lo_index):
-            cached_size, canMerge = name_mergeInfo.get(fn_mod, (None, {}))
+            cached_size, canMerge = modInfo.get_table_prop('mergeInfo',
+                                                           (None, {}))
             if not isinstance(canMerge, dict):
                 canMerge = {} # Convert older settings (had a bool here)
             # Quickly check if some mergeability types are impossible for this
@@ -2477,7 +2475,7 @@ class ModInfos(TableFileInfos):
             for m in list(canMerge):
                 if m not in merg_checks_ints:
                     del canMerge[m]
-            name_mergeInfo[fn_mod] = (cached_size, canMerge)
+            modInfo.set_table_prop('mergeInfo', (cached_size, canMerge))
             if not (merg_checks - covered_checks):
                 # We've already covered all required checks with those checks
                 # above (e.g. an ESL-flagged plugin in a game with only ESL
@@ -2517,7 +2515,6 @@ class ModInfos(TableFileInfos):
         # The checks that are actually required for this game
         required_checks = {m: c for m, c in all_known_checks.items()
                            if m in bush.game.mergeability_checks}
-        mod_mergeInfo = self.table.getColumn('mergeInfo')
         with progress:
             progress.setFull(max(len(names),1))
             result, tagged_no_merge = {}, set()
@@ -2562,8 +2559,8 @@ class ModInfos(TableFileInfos):
                         merg_set.discard(fileName)
                 # Only store the enum values (i.e. the ints) in our settings
                 # files, we are moving away from pickling non-std classes
-                mod_mergeInfo[fileName] = (fileInfo.fsize, {
-                    k.value: v for k, v in check_results.items()})
+                fileInfo.set_table_prop('mergeInfo', (fileInfo.fsize, {
+                    k.value: v for k, v in check_results.items()}))
             return result, tagged_no_merge
 
     def _refresh_bash_tags(self):
@@ -2622,7 +2619,7 @@ class ModInfos(TableFileInfos):
             plugins."""
         merged_,imported_ = set(),set()
         for patch in patches & self.bashed_patches: # this must be up to date!
-            patchConfigs = self.table.getItem(patch, u'bash.patch.configs')
+            patchConfigs = self[patch].get_table_prop('bash.patch.configs')
             if not patchConfigs: continue
             if (merger_conf := patchConfigs.get('PatchMerger', {})).get(
                     u'isEnabled'):
@@ -3159,17 +3156,15 @@ class ModInfos(TableFileInfos):
         # Save to disc (load order and plugins.txt)
         self.cached_lo_save_all()
         # Update linked BP parts if the parent BP got renamed
-        for bp_part in self.table.getColumn('bp_split_parent'):
-            table_entry = self.table[bp_part]
-            if table_entry['bp_split_parent'] == old_key:
-                table_entry['bp_split_parent'] = newName
+        for mod_inf in self.values():
+            if mod_inf.get_table_prop('bp_split_parent') == old_key:
+                mod_inf.set_table_prop('bp_split_parent', newName)
         return old_key
 
     #--Delete
-    def delete_refresh(self, del_keys, check_existence, extra_del_data=None):
+    def delete_refresh(self, infos, check_existence):
         # adapted from refresh() (avoid refreshing from the data directory)
-        del_keys = super().delete_refresh(del_keys, check_existence,
-                                          extra_del_data)
+        del_keys = super().delete_refresh(infos, check_existence)
         # we need to call deactivate to deactivate dependents
         self.lo_deactivate(del_keys) # no-op if empty
         if del_keys and check_existence: # delete() path - refresh caches
@@ -3201,20 +3196,11 @@ class ModInfos(TableFileInfos):
         return self[fileName].get_version() if fileName in self else ''
 
     #--Oblivion 1.1/SI Swapping -----------------------------------------------
-    def _retry(self, old, new, ask_yes):  ##: we should check *before* writing the patch
-        m = [_('Wrye Bash encountered an error when renaming %(old)s to '
-               '%(new)s.'),
-             '', '',
-             _('The file is in use by another process such as '
-               '%(xedit_name)s.'),
-             '',
-             _('Please close the other program that is accessing %(new)s.'),
-             '', '',
-             _('Try again?')]
-        msg = '\n'.join(m) % {'xedit_name': bush.game.Xe.full_name,
-                              'old': old, 'new': new}
-        return ask_yes(self, msg, title=_('File in Use'))
-
+    _retry_msg = [_('Wrye Bash encountered an error when renaming %(old)s to '
+                    '%(new)s.'), '', '',
+        _('The file is in use by another process such as %(xedit_name)s.'), '',
+        _('Please close the other program that is accessing %(new)s.'), '', '',
+        _('Try again?')]
     def setOblivionVersion(self, newVersion, ask_yes):
         """Swaps Oblivion.esm to specified version."""
         baseName = self._master_esm # Oblivion.esm, say it's currently SI one
@@ -3223,8 +3209,8 @@ class ModInfos(TableFileInfos):
         newSize = bush.game.modding_esm_size[newName]
         oldSize = self[baseName].fsize
         if newSize == oldSize: return
-        current_version = bush.game.size_esm_version[oldSize]
         try: # for instance: Oblivion_SI.esm, we rename Oblivion.esm to this
+            current_version = bush.game.size_esm_version[oldSize]
             oldName = FName(f'{fnb}_{current_version}.esm')
         except KeyError:
             raise StateError("Can't match current main ESM to known version.")
@@ -3241,32 +3227,26 @@ class ModInfos(TableFileInfos):
         is_new_info_active = load_order.cached_is_active(newName)
         # can't use ModInfos rename because it will mess up the load order
         file_info_rename_op = super(ModInfos, self).rename_operation
-        while True:
-            try:
-                file_info_rename_op(baseInfo, oldName)
-                break
-            except PermissionError: ##: can only occur if SHFileOperation
-                # isn't called, yak - file operation API badly needed
-                if self._retry(baseInfo.abs_path,
-                        self.store_dir.join(oldName), ask_yes):
-                    continue
-                raise
-            except CancelError:
-                return
-        while True:
-            try:
-                file_info_rename_op(newInfo, self._master_esm)
-                break
-            except PermissionError:
-                if self._retry(newInfo.abs_path, baseInfo.abs_path, ask_yes):
-                    continue
-                #Undo any changes
-                file_info_rename_op(oldName, self._master_esm)
-                raise
-            except CancelError:
-                #Undo any changes
-                file_info_rename_op(oldName, self._master_esm)
-                return
+        rename_args = {baseInfo: baseInfo.abs_path,
+                       oldName: self.store_dir.join(oldName)}, {
+            newInfo: newInfo.abs_path, self._master_esm: baseInfo.abs_path}
+        for do_undo, args_dict in enumerate(rename_args):
+            while True:
+                try:
+                    file_info_rename_op(*args_dict)
+                    break
+                except PermissionError: ##: can only occur if SHFileOperation
+                    # isn't called, yak - file operation API badly needed
+                    old, new = args_dict.values()
+                    msg = '\n'.join(self._retry_msg) % {'old': old, 'new': new,
+                        'xedit_name': bush.game.Xe.full_name, }
+                    if ask_yes(self, msg, title=_('File in Use')):
+                        continue
+                    if do_undo: file_info_rename_op(oldName, self._master_esm)
+                    raise
+                except CancelError:
+                    if do_undo: file_info_rename_op(oldName, self._master_esm)
+                    return
         # set mtimes to previous respective values
         self[self._master_esm].setmtime(master_time)
         self[oldName].setmtime(new_info_time)
@@ -3340,25 +3320,26 @@ class SaveInfos(TableFileInfos):
     """SaveInfo collection. Represents save directory and related info."""
     _bain_notify = False
     # Enabled and disabled saves, no .bak files ##: needed?
-    file_pattern = re.compile('(%s)(f?)$' % '|'.join(r'\.%s' % s for s in
-        [bush.game.Ess.ext[1:], bush.game.Ess.ext[1:-1] + 'r']), re.I | re.U)
+    file_pattern = re.compile('(%s)(f?)$' % '|'.join(fr'\.{s}' for s in
+        [bush.game.Ess.ext[1:], bush.game.Ess.ext[1:-1] + 'r']), re.I)
     unique_store_key = Store.SAVES
 
     def _setLocalSaveFromIni(self):
         """Read the current save profile from the oblivion.ini file and set
         local save attribute to that value."""
         # saveInfos singleton is constructed in InitData after bosh.oblivionIni
-        self.localSave = oblivionIni.getSetting(
-            *bush.game.Ini.save_profiles_key,
-            default=bush.game.Ini.save_prefix)
-        # Hopefully will solve issues with unicode usernames # TODO(ut) test
-        self.localSave = decoder(self.localSave.rstrip('\\')) ##: use cp1252?
+        prev = getattr(self, 'localSave', None)
+        save_dir = oblivionIni.getSetting(*bush.game.Ini.save_profiles_key,
+            default=bush.game.Ini.save_prefix).rstrip('\\')
+        self.localSave = save_dir
+        if prev is not None and prev != save_dir:
+            self.table.save()
+            self.__init_db()
+        return prev != save_dir
 
     def __init__(self):
-        self.localSave = bush.game.Ini.save_prefix
         self._setLocalSaveFromIni()
-        super().__init__(dirs['saveBase'].join(
-            env.convert_separators(self.localSave)), SaveInfo)
+        super().__init__(self.__saves_dir(), SaveInfo)
         # Save Profiles database
         self.profiles = bolt.PickleDict(
             dirs[u'saveBase'].join(u'BashProfiles.dat'), load_pickle=True)
@@ -3427,7 +3408,8 @@ class SaveInfos(TableFileInfos):
     def bash_dir(self): return self.store_dir.join(u'Bash')
 
     def refresh(self, refresh_infos=True, booting=False):
-        if not booting: self._refreshLocalSave() # otherwise we just did this
+        if not booting:
+            self._setLocalSaveFromIni()
         return super().refresh(booting=booting) if refresh_infos else \
            self._rdata_type()
 
@@ -3474,18 +3456,11 @@ class SaveInfos(TableFileInfos):
         return moved
 
     #--Local Saves ------------------------------------------------------------
-    def _refreshLocalSave(self):
-        """Refreshes self.localSave."""
-        #--self.localSave is NOT a Path object.
-        localSave = self.localSave
-        self._setLocalSaveFromIni()
-        if localSave == self.localSave: return # no change
-        self.table.save()
-        self.__init_db()
-
     def __init_db(self):
-        self._initDB(dirs['saveBase'].join(
-            env.convert_separators(self.localSave))) # always has backslashes
+        self._initDB(self.__saves_dir())
+
+    def __saves_dir(self): # always has backslashes
+        return dirs['saveBase'].join(env.convert_separators(self.localSave))
 
     def setLocalSave(self, localSave: str, refreshSaveInfos=True):
         """Sets SLocalSavePath in Oblivion.ini. The latter must exist."""

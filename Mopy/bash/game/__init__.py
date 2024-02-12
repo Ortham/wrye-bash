@@ -29,7 +29,7 @@ from enum import Enum
 from itertools import chain
 from os.path import join as _j
 
-from .. import bolt
+from .. import bass, bolt
 from ..bolt import FNDict, fast_cached_property
 
 # Constants and Helpers -------------------------------------------------------
@@ -296,7 +296,6 @@ class GameInfo(object):
 
         @classmethod
         def exe_path_sc(cls):
-            from .. import bass
             exe_xse = bass.dirs['app'].join(cls.exe)
             return exe_xse if exe_xse.is_file() else None
 

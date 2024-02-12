@@ -1937,7 +1937,7 @@ class InstallersData(DataStore):
         if 'C' in what or changes:
             self.converters_data.refreshConverters(progress, fullRefresh)
         #--Done
-        if changes: self.hasChanged = True
+        if changes: self.hasChanged = True # todo use refresh_info here?
         return refresh_info
 
     def refresh_ns(self, *args, **kwargs):
@@ -1992,30 +1992,29 @@ class InstallersData(DataStore):
         # Update the ownership information for relevant data stores
         owned_per_store = []
         for store in data_tracking_stores():
-            storet = store.table
-            owned = [x for x in storet.getColumn('installer') if str(
-                storet[x]['installer']) == old_key]  # str due to Paths
+            owned = [v for v in store.values() if str( # str due to Paths
+                v.get_table_prop('installer')) == old_key]
             owned_per_store.append(owned)
-            for i in owned:
-                storet[i]['installer'] = '%s' % name_new
+            for v in owned:
+                v.set_table_prop('installer', '%s' % name_new)
         return True, *map(bool, owned_per_store)
 
     #--Dict Functions ---------------------------------------------------------
-    def files_to_delete(self, filenames, **kwargs):
+    def _delete_operation(self, infos, *, recycle=True):
         toDelete = []
-        markers = [k for k, inst in self.filter_essential(filenames).items() if
-                   inst.is_marker or toDelete.append(inst.abs_path)] # or None
-        return toDelete, markers
-
-    def _delete_operation(self, paths, markers, *, recycle=True):
+        markers = [inst.fn_key for inst in infos if
+                   inst.is_marker or toDelete.append(inst)] # or None
+        super()._delete_operation(toDelete, recycle=recycle)
         for m in markers: del self[m]
-        super()._delete_operation(paths, markers, recycle=recycle)
 
-    def delete_refresh(self, del_keys, check_existence, markers):
+    def delete_refresh(self, infos, check_existence):
+        del_insts = [inst for inst in infos if not inst.is_marker]
+        markers = len(del_insts) < len(infos)
         if check_existence:
-            del_keys = {i for i in del_keys if not self[i].abs_path.exists()}
-        if del_keys: # markers are popped in _delete_operation
-            self.irefresh(what='I', refresh_info=RefrData({*del_keys}))
+            del_insts = {i for i in del_insts if not i.abs_path.exists()}
+        if del_insts: # markers are popped in _delete_operation
+            self.irefresh(what='I',
+                          refresh_info=RefrData({i.fn_key for i in del_insts}))
         elif markers:
             self.refreshOrder()
 
@@ -2742,14 +2741,24 @@ class InstallersData(DataStore):
         # keep those to be removed while not restored by a higher order package
         to_keep = (removes & dest_sc.keys()) - restores.keys()
         for ci_dest in to_keep:
-            removes.discard(ci_dest) # don't remove it anyway
-            try: # restore it from this installer?
-                if dest_sc[ci_dest] != self.data_sizeCrcDate[ci_dest][:2]:
+            # We don't want to remove it right now, only if no higher package
+            # has it either -> that's checked later
+            removes.discard(ci_dest)
+            try:
+                version_in_data = self.data_sizeCrcDate[ci_dest]
+            except KeyError:
+                # The file isn't present in the Data folder at all -> missing
+                # file, restore it from this package
+                restores[ci_dest] = installer.fn_key
+            else:
+                if installer.ci_dest_sizeCrc[ci_dest] != version_in_data[:2]:
+                    # This package has a different version than the one in the
+                    # Data folder, restore that one
                     restores[ci_dest] = installer.fn_key
-                    continue
-            except KeyError: pass
-            # don't mind the FName(str()) below - done seldom
-            cede_ownership[installer.fn_key].add(FName(str(ci_dest)))
+                else: # don't mind the FName(str()) below - done seldom
+                    # This package has the same version as the one in the Data
+                    # folder, so simply take ownership of the existing file
+                    cede_ownership[installer.fn_key].add(FName(str(ci_dest)))
         return set(dest_sc)
 
     def bain_uninstall_all(self, refresh_ui, progress=None):
@@ -2811,7 +2820,7 @@ class InstallersData(DataStore):
                     for store in stores:
                         if store_info := store.data_path_to_info(owned_path):
                             store_info.set_table_prop('installer', f'{ikey}')
-                            refresh_ui[store.unique_store_key] = True
+                            refresh_ui[store.unique_store_key] = True ## todo refreshdata
                             # Each file may only belong to one data store
                             break
         finally:
@@ -2871,7 +2880,7 @@ class InstallersData(DataStore):
         from . import modInfos
         for bpatch in modInfos.bashed_patches: # type: FName
             ci_keep_files.add(CIstr(bpatch))
-            bp_doc = modInfos.table.getItem(bpatch, u'doc')
+            bp_doc = modInfos[bpatch].get_table_prop('doc')
             if bp_doc: # path is absolute, convert to relative to the Data/ dir
                 try:
                     bp_doc = bp_doc.relpath(bass.dirs[u'mods'])
