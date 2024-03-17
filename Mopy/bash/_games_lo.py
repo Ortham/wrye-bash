@@ -309,9 +309,9 @@ class LoGame:
     def set_load_order(self, lord, active, previous_lord=None,
                        previous_active=None, fix_lo=None):
         """Set the load order and/or active plugins (or just validate if
-        previous_* is None). The different way each game handles this and how
+        previous_* are None). The different way each game handles this and how
         it modifies common data structures necessitate that info on previous
-        (cached) state is passed in, usually for both active plugins and
+        (cached) state be passed in, usually for both active plugins and
         load order. For instance, in the case of asterisk games, plugins.txt
         is the common structure for defining both the global load order and
         which plugins are active. The logic is as follows:
@@ -361,10 +361,10 @@ class LoGame:
                 setting_active = self._must_update_active(dltd, reordered)
             if setting_active: active = list(previous_active) # active was None
         if setting_active:
+            # a load order is needed for all games to validate active against
             if lord is previous_lord is None:
                 raise ValueError(
                     u'You need to pass a load order in to set active plugins')
-            # a load order is needed for all games to validate active against
             test = lord if setting_lo else previous_lord
             self._fix_active_plugins(active, test, fix_lo, on_disc=False)
         lord = lord if setting_lo else previous_lord
@@ -651,13 +651,12 @@ def _mk_ini(ini_key, star, ini_fpath):
 
         def write_modfile(self, lord, active):
             """Write out the lord/active using the section/key format attrs."""
-            # Remove any existing section - also prevents duplicate sections
-            # with different case
-            self.remove_section(self._section)
-            # Now, write out the changed values - no backup here
             section_contents = {self._key_fmt % {'lo_idx': i}: lo_mod for
                                 i, lo_mod in enumerate(lord)}
-            self.saveSettings({self._section: section_contents})
+            # Remove any existing section - also prevents duplicate sections
+            # with different case
+            self.saveSettings({self._section: section_contents},
+                              skip_sections={self._section.lower()})
 
         def upd_on_swap(self, old_dir, new_dir):
             # If there's no INI inside the old (saves) directory, copy it
