@@ -2438,7 +2438,7 @@ class Mod_Snapshot(ItemLink):
                 fileInfo.writeDescription(newDescription)
                 self.window.panel.SetDetails(fileName)
             #--Copy file
-            fileInfo.copy_to(destDir.join(destName))
+            fileInfo.fs_copy(destDir.join(destName))
 
 #------------------------------------------------------------------------------
 class Mod_RevertToSnapshot(OneItemLink):
@@ -2471,7 +2471,7 @@ class Mod_RevertToSnapshot(OneItemLink):
             destPath = sel_inf.abs_path
             current_mtime = destPath.mtime
             # Make a temp copy first in case reverting to snapshot fails
-            self._selected_info.copy_to(known_good_copy)
+            self._selected_info.fs_copy(known_good_copy)
             # keep load order (so mtime)
             snapPath.copyTo(destPath, set_time=current_mtime)
             try:

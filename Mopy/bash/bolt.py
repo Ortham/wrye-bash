@@ -1715,7 +1715,7 @@ class AFile(object):
         """
         self.fsize, self.ftime = stat_tuple
 
-    def _fs_copy(self, dup_path: Path, *, set_time=None):
+    def fs_copy(self, dup_path: Path, *, set_time=None):
         """Duplicate file to dup_path. If set_time is None, we set the mtime
         of the duplicate path to ftime. This should really be a
         _mark_not_changed internal API (what about ctime?)."""
@@ -1830,12 +1830,11 @@ class ListInfo:
         """Copies self to dup_path. Will overwrite! Will add the new file to
         the data_store if copied inside the store_dir but the client is
         responsible for calling the final refresh of the data store."""
-        self._fs_copy(dup_path, set_time=set_time)
-        destDir, destName = dup_path.head, dup_path.stail
-        if destDir == self._store().store_dir:
-            self._store().add_info(self, destName, **kwargs)
+        self.fs_copy(dup_path, set_time=set_time)
+        if dup_path.head == self._store().store_dir:
+            self._store().add_info(self, dup_path.stail, **kwargs)
 
-    def _fs_copy(self, dup_path, set_time=None):
+    def fs_copy(self, dup_path, *, set_time=None):
         raise NotImplementedError
 
     def __str__(self):

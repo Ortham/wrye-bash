@@ -1688,7 +1688,7 @@ class InstallerProject(_InstallerPackage):
         return super().do_update(raise_on_error=True, # don't call on deleted!
                                  force_update=force_update, **kwargs)
 
-    def _fs_copy(self, dest_path, **kwargs):
+    def fs_copy(self, dest_path, **kwargs):
         # does not preserve mtimes so next do_update will return True?
         shutil.copytree(self.abs_path.s, dest_path.s, ##: are .s needed?
                         copy_function=copy_or_reflink2)
@@ -3187,7 +3187,7 @@ class InstallersData(DataStore):
                 srcJoin(ci_rel_path).copyTo(dstJoin(ci_rel_path))
             except FileNotFoundError: # modInfos MUST BE UPDATED
                 if minf := mod_infos.get(str(ci_rel_path)): # try the ghost
-                    minf.copy_to(dstJoin(ci_rel_path))
+                    minf.fs_copy(dstJoin(ci_rel_path))
                 else: raise
         # Refresh, so we can manipulate the InstallerProject item
         self.new_info(projectPath, progress,

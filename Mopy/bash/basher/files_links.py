@@ -207,7 +207,7 @@ class _RevertBackup(OneItemLink):
             sel = self._selected_info
             # Make a temp copy first in case reverting to backup fails
             info_path = sel.abs_path
-            sel.copy_to(known_good_copy)
+            sel.fs_copy(known_good_copy)
             try:
                 self._selected_info.revert_backup(self.first)
             except exception.FileError:

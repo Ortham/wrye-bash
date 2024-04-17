@@ -329,11 +329,11 @@ class FileInfo(_TabledInfo, AFileInfo):
         if self not in self._store().values(): return
         if self.madeBackup and not forceBackup: return
         #--Backup
-        self.copy_to(self.backup_dir.join(self.fn_key))
+        self.fs_copy(self.backup_dir.join(self.fn_key))
         #--First backup
         firstBackup = self.backup_dir.join(self.fn_key) + 'f'
         if not firstBackup.exists():
-            self.copy_to(self.backup_dir.join(firstBackup.tail))
+            self.fs_copy(self.backup_dir.join(firstBackup.tail))
         self.madeBackup = True
 
     def backup_restore_paths(self, first, fname=None) -> list[tuple[Path, Path]]:
@@ -1005,11 +1005,11 @@ class ModInfo(FileInfo):
         # in this case the file is marked as normal but let's delete the ghost
         return *sup, self.abs_path + '.ghost' # Path.__add__!
 
-    def _fs_copy(self, dup_path, *, set_time=None):
+    def fs_copy(self, dup_path, *, set_time=None):
         destDir, destName = dup_path.head, dup_path.stail
         if destDir == (st := self._store()).store_dir and destName in st:
             dup_path = st[destName].abs_path # used the (possibly) ghosted path
-        super()._fs_copy(dup_path, set_time=set_time)
+        super().fs_copy(dup_path, set_time=set_time)
 
     def get_rename_paths(self, newName):
         old_new_paths = super().get_rename_paths(newName)
@@ -1441,9 +1441,9 @@ class SaveInfo(FileInfo):
         SaveInfos.co_copy_or_move(self._co_saves, destDir.join(self.fn_key),
                                   move_cosave=True)
 
-    def copy_to(self, dup_path, *args, **kwargs):
+    def fs_copy(self, dup_path, *, set_time=None):
         """Copies savefile and associated cosaves file(s)."""
-        super().copy_to(dup_path, *args, **kwargs)
+        super().fs_copy(dup_path, set_time=set_time)
         SaveInfos.co_copy_or_move(self._co_saves, dup_path)
 
     def get_rename_paths(self, newName):
@@ -1826,7 +1826,7 @@ class DefaultIniInfo(AINIInfo):
     def info_dir(self):
         return dirs['ini_tweaks']
 
-    def _fs_copy(self, cp_dest_path, **kwargs):
+    def fs_copy(self, cp_dest_path, **kwargs):
         # Default tweak, so the file doesn't actually exist
         self._store()._copy_to_new_tweak(self, FName(cp_dest_path.stail))
 
