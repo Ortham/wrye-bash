@@ -179,7 +179,7 @@ class Mod_DumpRecordTypeNames(ItemLink):
 
 # File submenu ----------------------------------------------------------------
 # the rest of the File submenu links come from file_links.py
-class Mod_CreateDummyMasters(OneItemLink, _LoadLink):
+class Mod_CreateDummyMasters(OneItemLink):
     """xEdit tool, makes dummy plugins for each missing master, for use if
     looking at a 'Filter' patch."""
     _text = _('Create Dummy Masters…')
@@ -209,21 +209,18 @@ class Mod_CreateDummyMasters(OneItemLink, _LoadLink):
             if master in bosh.modInfos:
                 previous_master = master ## todo TTT
                 continue
-            # Missing master, create a dummy plugin for it
-            newInfo = bosh.ModInfo(self._selected_info.info_dir.join(master))
-            mod_previous[master] = previous_master
-            previous_master = master
-            newFile = ModFile(newInfo, self._load_fact()) ###
-            newFile.tes4.author = u'BASHED DUMMY'
+            # Missing master, create a dummy plugin for it --------------------
             # Add the appropriate flags based on extension. This is obviously
             # just a guess - you can have a .esm file without an ESM flag in
             # Skyrim LE - but these are also just dummy masters.
-            ciext = newInfo.fn_key.fn_ext
-            if ciext in ('.esl', '.esm'):
-                newFile.tes4.flags1.esm_flag = True
-            if ciext == '.esl' and bush.game.has_esl:
-                newFile.tes4.flags1.esl_flag = True
-            newFile.safeSave()
+            ciext = master.fn_ext
+            bosh.modInfos.create_new_mod(master, author_str='BASHED DUMMY',
+                wanted_masters=[], # previous behavior - correct?
+                with_esl_flag=ciext == '.esl' and bush.game.has_esl, # should we blow?
+                dir_path=self._data_store.store_dir, # pass it explicitly so refresh is skipped
+                with_esm_flag=ciext in ('.esl', '.esm'))
+            mod_previous[master] = previous_master
+            previous_master = master
         bosh.modInfos.refresh([*mod_previous], insert_after=mod_previous)
         self.window.RefreshUI(detail_item=next(reversed(mod_previous.keys())),
                               refresh_others=Store.SAVES.DO())

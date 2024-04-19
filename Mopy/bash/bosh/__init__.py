@@ -2969,8 +2969,8 @@ class ModInfos(TableFileInfos):
 
     def create_new_mod(self, newName: str | FName,
             selected: tuple[FName, ...] = (),
-            wanted_masters: list[FName] | None = None, dir_path=empty_path,
-            is_bashed_patch=False, with_esm_flag=False, with_esl_flag=False,
+            wanted_masters: list[FName] | None = None, dir_path=None,
+            author_str='', with_esm_flag=False, with_esl_flag=False,
             with_overlay_flag=False) -> ModInfo | None:
         """Create a new plugin.
 
@@ -2981,9 +2981,9 @@ class ModInfos(TableFileInfos):
             matches the Data folder.
         :param wanted_masters: The masters the created plugin will have.
         :param dir_path: The directory in which the plugin will be created. If
-            empty, defaults to the Data folder.
-        :param is_bashed_patch: If True, mark the created plugin as a Bashed
-            Patch.
+            None, defaults to the Data folder and a refresh will be triggered.
+        :param author_str: set author - marks the created plugin as a Bashed
+            Patch or a Dummy master
         :param with_esm_flag: If True, set the created plugin's ESM flag.
         :param with_esl_flag: If True, set the created plugin's ESL flag. Only
             set this to True if the game actually supports ESLs, otherwise an
@@ -3003,8 +3003,8 @@ class ModInfos(TableFileInfos):
         newInfo = self.factory(dir_path.join(newName))
         newFile = ModFile(newInfo)
         newFile.tes4.masters = wanted_masters
-        if is_bashed_patch:
-            newFile.tes4.author = u'BASHED PATCH'
+        if author_str:
+            newFile.tes4.author = author_str
         if with_esm_flag:
             newFile.tes4.flags1.esm_flag = True
         if with_esl_flag:
@@ -3016,7 +3016,7 @@ class ModInfos(TableFileInfos):
                 raise InvalidPluginFlagsError(overlay_flag=True)
             newFile.tes4.flags1.overlay_flag = True
         newFile.safeSave()
-        if dir_path == self.store_dir:
+        if dir_path is None:
             last_selected = load_order.get_ordered(selected)[
                 -1] if selected else self._lo_wip[-1]
             rdata = self.refresh([newName := FName(newName)],
@@ -3033,7 +3033,7 @@ class ModInfos(TableFileInfos):
             modName = f'Bashed Patch, {num}.esp'
             if modName not in self:
                 self.create_new_mod(modName, selected=selected_mods,
-                                    wanted_masters=[], is_bashed_patch=True)
+                    wanted_masters=[], author_str='BASHED PATCH')
                 return FName(modName)
         return None
 
