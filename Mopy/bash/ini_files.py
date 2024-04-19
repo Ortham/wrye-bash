@@ -288,7 +288,7 @@ class IniFileInfo(AIniInfo, AFileInfo):
             deprint(f'Error reading ini file {self.abs_path}', traceback=True)
         return []
 
-    def get_ci_settings(self, with_deleted=False):
+    def get_ci_settings(self, with_deleted=False, *, missing_ok=False):
         """Populate and return cached settings - if not just reading them
         do a copy first !"""
         try:
@@ -296,7 +296,8 @@ class IniFileInfo(AIniInfo, AFileInfo):
                     or self.do_update(raise_on_error=True):
                 try:
                     self._ci_settings_cache_linenum, self._deleted_cache, \
-                        self.isCorrupted = self._get_ci_settings(self.abs_path)
+                        self.isCorrupted = self._get_ci_settings(self.abs_path,
+                                                                 missing_ok)
                 except UnicodeDecodeError as e:
                     msg = _('The INI file %(ini_full_path)s seems to have '
                             'unencodable characters:')
@@ -309,7 +310,7 @@ class IniFileInfo(AIniInfo, AFileInfo):
             return self._ci_settings_cache_linenum, self._deleted_cache
         return self._ci_settings_cache_linenum
 
-    def _get_ci_settings(self, tweakPath):
+    def _get_ci_settings(self, tweakPath, missing_ok=False):
         """Get settings as defaultdict[dict] of section -> (setting -> value).
         Keys in both levels are case insensitive. Values are stripped of
         whitespace. "deleted settings" keep line number instead of value (?)
@@ -326,7 +327,7 @@ class IniFileInfo(AIniInfo, AFileInfo):
         #--Read ini file
         sectionSettings = None
         section = None
-        for i, line in enumerate(self.read_ini_content()):
+        for i, line in enumerate(self.read_ini_content(missing_ok=missing_ok)):
             maDeleted = reDeleted.match(line)
             stripped = self._re_whole_line_com.sub('', line).strip()
             maSection = reSection.match(stripped)
@@ -580,7 +581,7 @@ class OBSEIniFile(IniFileInfo):
                 return ma_obse, sectionKey, format_string
         return None, None, None
 
-    def _get_ci_settings(self, tweakPath):
+    def _get_ci_settings(self, tweakPath, missing_ok=False):
         """Get the settings in the ini script."""
         ini_settings = DefaultLowerDict(LowerDict)
         deleted_settings = DefaultLowerDict(LowerDict)
