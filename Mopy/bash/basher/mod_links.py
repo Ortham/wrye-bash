@@ -40,7 +40,7 @@ from .. import balt, bass, bolt, bosh, bush, load_order, exception
 from ..balt import AppendableLink, CheckLink, ChoiceLink, EnabledLink, \
     ItemLink, Link, MenuLink, OneItemLink, SeparatorLink, TransLink
 from ..bass import Store
-from ..bolt import FName, SubProgress, dict_sort, sig_to_str
+from ..bolt import FName, SubProgress, dict_sort, sig_to_str, FNDict
 from ..brec import RecordType
 from ..exception import BoltError, CancelError, PluginsFullError
 from ..game import MergeabilityCheck
@@ -202,15 +202,16 @@ class Mod_CreateDummyMasters(OneItemLink, _LoadLink):
               "to continue?") % {'xedit_name': bush.game.Xe.full_name},
             _("To remove these files later, use 'Remove Dummy Masters…'.")])
         if not self._askYes(msg, title=self._text): return
-        to_refresh = []
-        # creates esp files - so place them correctly after the last esm
-        previous_master = bosh.modInfos.cached_lo_last_esm()
+        mod_previous = FNDict() # previous master for each master
+        # creates esp files - so place them correctly after the last esm ## todo esps?
+        previous_master = bosh.modInfos.cached_lo_last_esm() # todo single use!!!
         for master in self._selected_info.masterNames:
             if master in bosh.modInfos:
+                previous_master = master ## todo TTT
                 continue
             # Missing master, create a dummy plugin for it
             newInfo = bosh.ModInfo(self._selected_info.info_dir.join(master))
-            to_refresh.append((master, previous_master))
+            mod_previous[master] = previous_master
             previous_master = master
             newFile = ModFile(newInfo, self._load_fact()) ###
             newFile.tes4.author = u'BASHED DUMMY'
@@ -223,17 +224,10 @@ class Mod_CreateDummyMasters(OneItemLink, _LoadLink):
             if ciext == '.esl' and bush.game.has_esl:
                 newFile.tes4.flags1.esl_flag = True
             newFile.safeSave()
-        to_select = []
-        for mod, previous in to_refresh:
-            # add it to modInfos or lo_insert_after blows for timestamp games
-            bosh.modInfos.new_info(mod, notify_bain=True, _in_refresh=True)
-            bosh.modInfos.cached_lo_insert_after(previous, mod)
-            to_select.append(mod)
-        bosh.modInfos.cached_lo_save_lo()
-        bosh.modInfos.refresh(refresh_infos=False)
-        self.window.RefreshUI(detail_item=to_select[-1],
+        bosh.modInfos.refresh([*mod_previous], insert_after=mod_previous)
+        self.window.RefreshUI(detail_item=next(reversed(mod_previous.keys())),
                               refresh_others=Store.SAVES.DO())
-        self.window.SelectItemsNoCallback(to_select)
+        self.window.SelectItemsNoCallback(mod_previous)
 
 #------------------------------------------------------------------------------
 class Mod_OrderByName(EnabledLink):
@@ -1409,7 +1403,7 @@ class Mod_FogFixer(ItemLink):
 #------------------------------------------------------------------------------
 class _CopyToLink(EnabledLink):
     def __init__(self, plugin_ext):
-        super(_CopyToLink, self).__init__(plugin_ext)
+        super().__init__(plugin_ext)
         self._target_ext = plugin_ext
         self._help = _('Creates a copy of the selected plugins with the '
                        'extensions changed to %(new_plugin_ext)s.') % {
@@ -1419,15 +1413,17 @@ class _CopyToLink(EnabledLink):
         return any(p.get_extension() != self._target_ext
                    for p in self.iselected_infos())
 
+    @balt.conversation
     def Execute(self):
         modInfos, added = bosh.modInfos, []
-        do_save_lo = False
         add_esl_flag = self._target_ext == u'.esl'
         add_esm_flag = add_esl_flag or self._target_ext == '.esm'
+        # previous = modInfos.cached_lo_last_esm()
+        mod_previous = FNDict()
         with BusyCursor(): # ONAM generation can take a bit
             for curName, minfo in self.iselected_pairs():
                 if self._target_ext == curName.fn_ext: continue
-                newName = FName(curName.fn_body + self._target_ext)
+                newName = FName(f'{curName.fn_body}{self._target_ext}')
                 #--Replace existing file?
                 timeSource = None
                 if newName in modInfos:
@@ -1443,17 +1439,14 @@ class _CopyToLink(EnabledLink):
                 # Copy and set flag - will use ghosted path if needed
                 minfo.copy_to(minfo.info_dir.join(newName), set_time=newTime)
                 added.append(newName)
-                newInfo = modInfos[newName]
-                newInfo.set_plugin_flags(set_esm=add_esm_flag,
-                                         set_esl=add_esl_flag)
                 if timeSource is None: # otherwise it has a load order already!
-                    modInfos.cached_lo_insert_after(
-                        modInfos.cached_lo_last_esm(), newName)
-                    do_save_lo = True
+                    mod_previous[newName] = curName
         #--Repopulate
         if added:
-            if do_save_lo: modInfos.cached_lo_save_lo()
-            modInfos.refresh(refresh_infos=False)
+            rdata = modInfos.refresh(added, insert_after=mod_previous)
+            for newInfo in rdata.to_add:
+                newInfo.set_plugin_flags(set_esm=add_esm_flag,
+                                         set_esl=add_esl_flag)
             self.window.RefreshUI(refresh_others=Store.SAVES.DO(),
                                   detail_item=added[-1])
             self.window.SelectItemsNoCallback(added)
