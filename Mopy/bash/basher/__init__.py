@@ -3339,9 +3339,9 @@ class InstallersPanel(BashTab):
             if what:
                 with prog as progress:
                     try:
-                        refreshui = self.listData.irefresh(progress, what,
-                                                           fullRefresh,
-                                                           refresh_info)
+                        refreshui = self.listData.irefresh(refresh_info,
+                            what=what, fullRefresh=fullRefresh,
+                            progress=progress)
                         self.frameActivated = False
                     except CancelError:
                         self._user_cancelled = True # User canceled the refresh
