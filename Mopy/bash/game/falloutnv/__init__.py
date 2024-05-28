@@ -81,7 +81,11 @@ class _AFalloutNVGameInfo(AFallout3GameInfo):
         xe_key_prefix = u'fnvView'
 
     class Bain(AFallout3GameInfo.Bain):
-        data_dirs = (AFallout3GameInfo.Bain.data_dirs - {'fose'}) | {'nvse'}
+        data_dirs = (AFallout3GameInfo.Bain.data_dirs - {'fose'}) | {
+            'baseobjectswapper', # 3P: Base Object Swapper
+            'keywords', # 3P: KEYWORDS
+            'nvse', # 3P: NVSE
+        }
         no_skip = AFallout3GameInfo.Bain.no_skip | {
             'aaid.txt', # 3P: Auto Activate Invisible Doors
             _j('uio', 'supported.txt'), # 3P: UIO - User Interface Organizer
