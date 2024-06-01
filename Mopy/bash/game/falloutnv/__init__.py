@@ -330,6 +330,9 @@ class _AFalloutNVGameInfo(AFallout3GameInfo):
         8692: ('AudioMarkerGetController', 0, 0),
         8701: ('AudioMarkerGetCurrent', 0, 0),
         8706: ('GameGetSecondsPassed', 0, 0),
+        # Added by AnhNVSE - up to date with v1.3.1
+        9732: ('GetQuestCompletedAlt', 2, 0),
+        9753: ('GetArmorARAlt', 2, 0),
         # Added by TTW nvse plugin
         10247: ('TTW_GetEquippedWeaponSkill', 0, 0),
         # Added by SUP NVSE - up to date with v8.55
