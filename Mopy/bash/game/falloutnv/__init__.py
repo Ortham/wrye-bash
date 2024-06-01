@@ -85,6 +85,7 @@ class _AFalloutNVGameInfo(AFallout3GameInfo):
             'baseobjectswapper', # 3P: Base Object Swapper
             'keywords', # 3P: KEYWORDS
             'nvse', # 3P: NVSE
+            'racemenupresets', # 3P: Character Preset Menu
         }
         no_skip = AFallout3GameInfo.Bain.no_skip | {
             'aaid.txt', # 3P: Auto Activate Invisible Doors
