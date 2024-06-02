@@ -2132,11 +2132,11 @@ class ModPanel(BashTab):
                 sb_fmt = _('Mods: %(status_num)d/%(total_status_num)d (ESP/M: '
                            '%(status_num_espm)d, ESL: %(status_num_esl)d, '
                            'Overlay: %(status_num_overlay)d)')
-        return sb_fmt %  {'status_num': len(all_mods),
-                          'total_status_num': len(bosh.modInfos),
-                          'status_num_espm': regular_count,
-                          'status_num_esl': esl_count,
-                          'status_num_overlay': overlay_count}
+        return sb_fmt % {'status_num': len(all_mods),
+                         'total_status_num': len(bosh.modInfos),
+                         'status_num_espm': regular_count,
+                         'status_num_esl': esl_count,
+                         'status_num_overlay': overlay_count}
 
     def ClosePanel(self, destroy=False):
         load_order.persist_orders()
