@@ -956,6 +956,8 @@ class TextfileGame(_TextFileLo):
         return u''
 
 class AsteriskGame(_TextFileLo):
+    """_TextFileLo storing also active state in the lo file - active plugins
+    are marked with a star."""
 
     max_espms = 254
     max_esls = 4096 # hard limit, game runs out of fds sooner, testing needed
