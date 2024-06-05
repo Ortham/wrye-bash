@@ -77,13 +77,14 @@ def init_image_resources(images_dir):
         svg = _icc(layers[0])
         svg.composite(*layers)
         for col, (primary, secondary) in box_colors.items():
-            _installer_icons[f'{st}.{col}{typ}{overlay}'] = svg.with_svg_vars(primary_color=primary, secondary_color=secondary)
+            _installer_icons[f'{st}.{col}{typ}{overlay}'] = svg.with_svg_vars(
+                primary_color=primary, secondary_color=secondary)
     _installer_icons['corrupt'] = _icc('red_x.svg')
     _gui_images.update(_installer_icons)
     # collect color checks for the rest of the UILists
     _color_checks = dict(arrows)
     for st, col in product(['imp', 'inc', 'off', 'on'],
-                           ['purple', 'blue', 'green', 'orange', 'yellow', 'red']):
+                           box_colors.keys() - {'white', 'grey'}):
         inst_key = 'on' if st == 'inc' else ('inc' if st == 'on' else st)
         if inst_key in _installer_icons:
             colored_check = _installer_icons[f'{inst_key}.{col}']
@@ -98,7 +99,8 @@ def init_image_resources(images_dir):
             svg = _icc(layers[0])
             svg.composite(*layers)
             primary, secondary = box_colors[col]
-            colored_check = svg.with_svg_vars(primary_color=primary, secondary_color=secondary)
+            colored_check = svg.with_svg_vars(primary_color=primary,
+                                              secondary_color=secondary)
         _color_checks[f'{st}.{col}'] = colored_check
     _gui_images.update(_color_checks)
     # PNGs --------------------------------------------------------------------

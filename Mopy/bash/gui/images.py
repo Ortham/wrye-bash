@@ -121,28 +121,20 @@ class _SvgFromPath(GuiImage):
             self._cached_args = (wanted_svgs,)
         return super()._native_widget
     
-    def composite(self, *layers: str | Path):
+    def composite(self, base_svg, *layer_svgs: str | Path):
         """Create a composite SVG image, by combining elements from the given
         layers, with the first layer being the lowest layer.
         """
-        if not layers:
-            raise ArgumentError('A composite SVG must include at least one path.')
-        layers = (layer if os.path.isabs(layer)
-                  else os.path.join(get_image_dir(), layer)
-                  for layer in layers)
-        it = iter(layers)
-        def to_bytes(x):
-            with io.BytesIO() as out:
-                x.write(out)
-                return out.getvalue()
-        base_layer = ET.parse(next(it))
-        base_svg_root = base_layer.getroot()
-        if base_svg_root is None:
-            raise TypeError('Not an SVG') #: TODO: better exception?
-        for layer in it:
-            layer_svg_root = ET.parse(layer).getroot()
+        svg_paths = [p if os.path.isabs(p) else os.path.join(
+            get_image_dir(), p) for p in (base_svg, *layer_svgs)]
+        for (ldex, layer) in enumerate(map(ET.parse, svg_paths)):
+            layer_svg_root = layer.getroot()
             if layer_svg_root is None:
-                raise TypeError('Not an SVG') #: TODO: better exception?
+                raise ValueError(f'Invalid SVG {layer=!r} loaded from '
+                                 f'{svg_paths[ldex]}')
+            if not ldex:
+                base_layer, base_svg_root = layer, layer_svg_root
+                continue
             base_svg_root.extend(layer_svg_root.findall('.*'))
         with io.BytesIO() as out:
             base_layer.write(out)
