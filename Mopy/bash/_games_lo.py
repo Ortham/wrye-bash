@@ -309,9 +309,9 @@ class LoGame:
     def set_load_order(self, lord, active, previous_lord=None,
                        previous_active=None, fix_lo=None):
         """Set the load order and/or active plugins (or just validate if
-        previous_* is None). The different way each game handles this and how
+        previous_* are None). The different way each game handles this and how
         it modifies common data structures necessitate that info on previous
-        (cached) state is passed in, usually for both active plugins and
+        (cached) state be passed in, usually for both active plugins and
         load order. For instance, in the case of asterisk games, plugins.txt
         is the common structure for defining both the global load order and
         which plugins are active. The logic is as follows:
@@ -361,10 +361,10 @@ class LoGame:
                 setting_active = self._must_update_active(dltd, reordered)
             if setting_active: active = list(previous_active) # active was None
         if setting_active:
+            # a load order is needed for all games to validate active against
             if lord is previous_lord is None:
                 raise ValueError(
                     u'You need to pass a load order in to set active plugins')
-            # a load order is needed for all games to validate active against
             test = lord if setting_lo else previous_lord
             self._fix_active_plugins(active, test, fix_lo, on_disc=False)
         lord = lord if setting_lo else previous_lord
