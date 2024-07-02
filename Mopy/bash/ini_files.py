@@ -409,13 +409,13 @@ class IniFileInfo(AIniInfo, AFileInfo):
             comment = f' {cls._comment_char} {comment}'
         return f'{setting}={value}{comment}'
 
-    def apply_tweak_lines(self, tweak_lines):
-        """Parse tweak lines and create dictionaries of updated/new and deleted
-        settings (values are the tweak line with a newline appended)."""
+    def apply_tweak(self, tweak_inf):
+        """Create dictionaries of updated/new and deleted settings mapped to
+        the lines of the tweak to pass to saveSettings."""
         ini_settings = DefaultLowerDict(LowerDict)
         deleted_settings = DefaultLowerDict(LowerDict)
         section = None
-        for line in tweak_lines:
+        for line in tweak_inf.read_ini_content():
             _strip, setting, _val, new_section, is_del = self.parse_ini_line(
                 line)
             if not (section := new_section or section):
